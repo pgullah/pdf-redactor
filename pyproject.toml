@@ -1,0 +1,20 @@
+[project]
+name = "pdf-redactor"
+version = "0.1.0"
+description = "Local PDF redaction with Tesseract OCR"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "PyYAML>=6.0.2,<7",
+    "pypdfium2>=4.30,<6",
+    "pytesseract>=0.3.13,<0.4",
+    "Pillow>=11,<13",
+    "reportlab>=4.2,<5",
+]
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "pypdf>=5,<7", "ruff>=0.11,<1"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+markers = ["document_regression: real OCR and PDF validation corpus (requires Tesseract)"]

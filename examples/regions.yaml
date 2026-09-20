@@ -1,0 +1,24 @@
+# No OCR/plugin needed: --config examples/regions.yaml
+# Replace these example coordinates with the areas in your own PDF.
+masking:
+  default:
+    mode: black
+  regions:
+    - page: 0       # Zero-based page number.
+      x: 0.10      # Normalized coordinates, top-left origin.
+      y: 0.20
+      w: 0.50
+      h: 0.08
+      style:
+        mode: text
+        text: '[PRIVATE REGION]'
+        background: '#FFFFFF'
+        foreground: '#000000'
+    - page: 0
+      x: 0.10
+      y: 0.35
+      w: 0.50
+      h: 0.06
+      style:
+        mode: fill
+        background: '#CCCCCC'

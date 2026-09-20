@@ -1,0 +1,19 @@
+# Customize which purchase-order fields to mask.
+purchase-order:
+  fields:
+    shipping_name_and_address:
+      labels:
+        - Ship To
+        - Deliver To
+        - Delivery Address
+      max_lines: 5
+    billing_name_and_address:
+      labels:
+        - Bill To
+        - Billing Address
+      max_lines: 5
+    buyer_name:
+      labels:
+        - Buyer
+        - Ordered By
+      max_lines: 1

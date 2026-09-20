@@ -1,0 +1,43 @@
+# Run with: --plugin general --config examples/masking.yaml
+# Mask appearance is separate from the rules that identify sensitive fields.
+masking:
+  default:
+    mode: black
+  fields:
+    person_name:
+      mode: text
+      text: XXXXX
+      background: '#FFFFFF'
+      foreground: '#000000'
+    postal_address:
+      mode: text
+      text: XXXXX
+    email_address:
+      mode: text
+      text: '[EMAIL REMOVED]'
+    account_number:
+      mode: black
+    # Qualify a field when multiple detectors use the same name:
+    # general.phone_number:
+    #   mode: fill
+    #   background: '#DDDDDD'
+  regions: []
+
+general:
+  fields:
+    person_name:
+      labels: [Name, Full Name, Customer Name]
+      max_lines: 1
+    postal_address:
+      labels: [Address, Postal Address, Mailing Address]
+      max_lines: 5
+    phone_number:
+      labels: [Phone, Telephone, Mobile]
+      max_lines: 1
+    account_number:
+      labels: [Account Number, Account No]
+      max_lines: 1
+  stop_labels: [Date, Email, Phone, Total, Notes, Signature]
+  patterns:
+    email_address:
+      regex: '\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b'

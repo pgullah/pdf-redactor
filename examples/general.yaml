@@ -1,0 +1,54 @@
+# General document masking. Edit labels to match your documents.
+# Remove a rule to disable it. Labels are preserved; their values are masked.
+general:
+  fields:
+    person_name:
+      labels: [Name, Full Name, Customer Name, Contact Name, Recipient Name]
+      max_lines: 1
+    postal_address:
+      labels: [Address, Postal Address, Mailing Address, Registered Address]
+      max_lines: 5
+    shipping_address:
+      labels: [Ship To, Deliver To, Shipping Address, Delivery Address]
+      max_lines: 5
+    billing_address:
+      labels: [Bill To, Billing Address]
+      max_lines: 5
+    phone_number:
+      labels: [Phone, Telephone, Mobile, Contact Number]
+      max_lines: 1
+    account_number:
+      labels: [Account Number, Account No, Customer ID]
+      max_lines: 1
+
+  # These headings end multiline values; extend for your own templates.
+  stop_labels:
+    - Email
+    - Date
+    - Reference
+    - Invoice Number
+    - Order Number
+    - Description
+    - Item
+    - Quantity
+    - Total
+    - Terms
+    - Notes
+    - Signature
+
+  # Regex rules apply across each page's OCR text, independent of field labels.
+  # Single quotes preserve regex backslashes in YAML.
+  patterns:
+    email_address:
+      regex: '\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b'
+      case_sensitive: false
+
+  # Add exact values when you know what to remove anywhere in the document.
+  literals: {}
+  # literals:
+  #   known_names:
+  #     values: [Jane Smith, Alex Jones]
+  #     case_sensitive: false
+  #   internal_reference:
+  #     values: [CONFIDENTIAL-123]
+  #     case_sensitive: true
