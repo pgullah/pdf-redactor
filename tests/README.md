@@ -75,3 +75,19 @@ uv run pytest tests/test_mask_styles.py -v
 ```
 
 These checks cover opaque replacement pixels independent of original content, exact clipping, black defaults, custom colors, invalid styles/fonts, per-field precedence and line grouping, region-only runs without OCR, black priority on overlaps, and a real OCR → styled YAML plan → PDF export. A generated example is saved under `tmp/redaction-validation/text_replacement/`.
+
+## Same-line fields
+
+```sh
+uv run pytest tests/test_inline_fields.py -v
+```
+
+Tests cover multiple sensitive values on one line, public-field boundaries, longest labels, repeated fields, separators, label-like words inside values, PO fields, address columns, and ambiguous joined OCR tokens. Four real PDF cases (digital/scanned × black/text masking) verify sensitive glyph coverage and pixel-identical preservation of neighboring labels and public values. Outputs are saved under `tmp/redaction-validation/inline-*/`.
+
+## Joined OCR words
+
+```sh
+uv run pytest tests/test_joined_ocr.py -v
+```
+
+These tests exercise tokens such as `Name:Jane;Phone:12345`, including real Tesseract output that contains multiple fields in one word. They check exact character-span selection, limited padding, rejection of forged geometry, coverage of expected sensitive glyphs, unchanged public glyphs, and exported black/text replacements. Artifacts are saved under `tmp/redaction-validation/joined-token-*/`.

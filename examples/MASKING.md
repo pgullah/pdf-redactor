@@ -44,7 +44,7 @@ general:
 Use the working [masking.yaml](masking.yaml) example:
 
 ```sh
-uv run python main.py plan input.pdf -o masks.yaml --plugin general --config examples/masking.yaml
+uv run python main.py plan input.pdf -o masks.yaml --config examples/masking.yaml
 uv run python main.py apply input.pdf --masks masks.yaml -o redacted.pdf
 ```
 
@@ -77,7 +77,7 @@ Style selection follows this priority:
 
 Each override is a complete style with its own mode defaults, not a partial merge with the document default. Field names are matched exactly. A field style does not itself detect anything; the detector must produce that finding. Check the plan's `findings` list to confirm the names.
 
-Text replacements combine contiguous selected words on the same OCR line, producing one label for a name such as `Jane Smith`. Multiline fields get one replacement per selected line. Unselected words and separate columns split replacement spans. Black and fill styles retain the existing word-level rectangles.
+Text replacements combine contiguous selected words on the same OCR line, producing one label for a name such as `Jane Smith`. Multiline fields get one replacement per selected line. Unselected words and separate columns split replacement spans. Black and fill styles use word-level rectangles, except for joined field tokens where character-backed slices preserve neighboring labels. Mask padding on a slice is bounded by neighboring characters.
 
 ## Explicit regions
 

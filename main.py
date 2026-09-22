@@ -21,24 +21,68 @@ from app.yaml_io import read_yaml, yaml_bytes
 
 def parser():
     root = argparse.ArgumentParser(
-        description="OCR and permanently redact PDFs locally with Tesseract."
+        description="Extract text or permanently redact PDFs locally with Tesseract.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Workflows:\n"
+            "  Inspect OCR:      ocr input.pdf -o extracted.yaml\n"
+            "  Review masks:     plan input.pdf --config rules.yaml -o masks.yaml\n"
+            "  Export reviewed:  apply input.pdf --masks masks.yaml -o redacted.pdf\n"
+            "  One-step export:  redact input.pdf --config rules.yaml -o redacted.pdf\n\n"
+            "Run a command with --help for details and options.\n"
+            "The source PDF is never modified. Region-only configurations skip OCR."
+        ),
     )
+    command_help = {
+        "ocr": (
+            "Extract text and word positions to YAML; no masking",
+            (
+                "Run Tesseract on each page and save recognized text, confidence scores, "
+                "and word coordinates as YAML. Does not detect sensitive fields or mask "
+                "the PDF. This output contains original text and is not a mask plan."
+            ),
+            "Example: %(prog)s input.pdf -o extracted.yaml --language eng",
+            "YAML file for extracted text, confidence scores, and word positions",
+        ),
+        "plan": (
+            "Detect what to mask and save a reviewable YAML plan; no PDF export",
+            (
+                "Run OCR and detection rules, then save mask coordinates and styles in "
+                "a YAML plan. Review or edit the plan before using apply. No redacted PDF "
+                "is created. Configurations containing only explicit regions skip OCR."
+            ),
+            "Example: %(prog)s input.pdf --config rules.yaml -o masks.yaml",
+            "YAML mask plan to review and pass to apply",
+        ),
+        "apply": (
+            "Export a redacted PDF from a saved plan; no OCR or rule detection",
+            (
+                "Verify that a saved YAML mask plan matches the source PDF, then apply "
+                "its masks and styles to produce a new image-only PDF. Does not rerun "
+                "OCR, plugins, or detection rules; no rules config is needed."
+            ),
+            "Example: %(prog)s input.pdf --masks masks.yaml -o redacted.pdf",
+            "Redacted image-only PDF created from the saved plan",
+        ),
+        "redact": (
+            "Detect and mask in one step, exporting a redacted PDF",
+            (
+                "Run OCR and detection rules, then permanently mask the selected content "
+                "and export a new image-only PDF. No intermediate plan is saved. Use "
+                "plan followed by apply when you want to review masks before export. "
+                "Configurations containing only explicit regions skip OCR."
+            ),
+            "Example: %(prog)s input.pdf --config rules.yaml -o redacted.pdf",
+            "Redacted image-only PDF created in one step",
+        ),
+    }
     commands = root.add_subparsers(dest="command", required=True)
-    for command, description in (
-        ("ocr", "Extract words and coordinates as YAML"),
-        ("plan", "Find text and write a reviewable mask plan"),
-        ("apply", "Apply a saved mask plan without running OCR"),
-        ("redact", "Run OCR, match text, and export a redacted PDF"),
-    ):
-        sub = commands.add_parser(command, help=description)
-        sub.add_argument("input", type=Path, help="Source PDF")
-        sub.add_argument(
-            "-o",
-            "--output",
-            required=True,
-            type=Path,
-            help="Output YAML (ocr/plan) or PDF (apply/redact)",
+    for command, (summary, description, example, output_help) in command_help.items():
+        sub = commands.add_parser(
+            command, help=summary, description=description, epilog=example
         )
+        sub.add_argument("input", type=Path, help="Source PDF (left unchanged)")
+        sub.add_argument("-o", "--output", required=True, type=Path, help=output_help)
         sub.add_argument(
             "--force",
             action="store_true",
@@ -54,8 +98,8 @@ def parser():
             sub.add_argument(
                 "--plugin",
                 action="append",
-                default=[],
-                help="Detector: general, purchase-order, module:function, or path.py:function; repeatable",
+                default=None,
+                help="Detector (default: general): general, purchase-order, module:function, or path.py:function; repeatable",
             )
             sub.add_argument(
                 "--plugin-config",
@@ -96,7 +140,7 @@ def parser():
                 "--masks",
                 required=True,
                 type=Path,
-                help="YAML plan created by the plan command",
+                help="Reviewed YAML mask plan from plan (not the extraction YAML from ocr)",
             )
     return root
 
@@ -174,7 +218,7 @@ def run(args):
     for option in ("terms_file", "masks", "plugin_config"):
         if getattr(args, option, None):
             inputs.append(getattr(args, option))
-    for spec in getattr(args, "plugin", []):
+    for spec in getattr(args, "plugin", None) or []:
         module = spec.rpartition(":")[0]
         if module.endswith(".py"):
             inputs.append(Path(module))
@@ -187,6 +231,19 @@ def run(args):
         ):
             raise ValueError(
                 "Plugin config must be a mapping keyed by plugin identifier, with mapping values."
+            )
+    if args.command in ("plan", "redact"):
+        if args.plugin is None:
+            # A general rules section selects the default detector. Standalone
+            # text/regex and explicit region workflows need no empty detector.
+            has_direct_rules = bool(
+                args.text
+                or args.regex
+                or args.terms_file
+                or config.get("masking", {}).get("regions")
+            )
+            args.plugin = (
+                ["general"] if "general" in config or not has_direct_rules else []
             )
         if set(config) - set(args.plugin) - {"masking"}:
             raise ValueError(
@@ -203,7 +260,13 @@ def run(args):
         if args.command in ("plan", "redact")
         else []
     )
-    detectors = [(spec, load_detector(spec)) for spec in getattr(args, "plugin", [])]
+    if "general" in (getattr(args, "plugin", None) or []) and "general" not in config:
+        raise ValueError(
+            "The general plugin requires a general rules section in --config PATH (for example, examples/general.yaml)."
+        )
+    detectors = [
+        (spec, load_detector(spec)) for spec in (getattr(args, "plugin", None) or [])
+    ]
     if args.command != "apply" and not re.fullmatch(
         r"[a-zA-Z0-9_]+(?:\+[a-zA-Z0-9_]+)*", args.language
     ):

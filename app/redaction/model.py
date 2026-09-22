@@ -5,6 +5,15 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
+class Character:
+    text: str
+    x: float
+    y: float
+    w: float
+    h: float
+
+
+@dataclass(frozen=True)
 class Word:
     page: int
     index: int
@@ -14,11 +23,96 @@ class Word:
     y: float
     w: float
     h: float
+    characters: tuple[Character, ...] = ()
+
+
+@dataclass(frozen=True)
+class WordSlice:
+    """An exact character span backed by the original OCR word and glyph boxes."""
+
+    word: Word
+    start: int
+    end: int
+
+    def __post_init__(self):
+        if not (
+            type(self.start) is int
+            and type(self.end) is int
+            and 0 <= self.start < self.end <= len(self.word.text)
+        ):
+            raise ValueError("Invalid OCR character span.")
+        if (
+            len(self.word.characters) != len(self.word.text)
+            or "".join(c.text for c in self.word.characters) != self.word.text
+        ):
+            raise ValueError(
+                "Cannot locate characters in a merged OCR word accurately "
+                f"(page {self.word.page + 1}, OCR word ID {self.word.index}). "
+                "Re-run OCR on a clearer scan or use an explicit region for this field."
+            )
+
+    @property
+    def page(self):
+        return self.word.page
+
+    @property
+    def index(self):
+        return self.word.index
+
+    @property
+    def text(self):
+        return self.word.text[self.start : self.end]
+
+    @property
+    def confidence(self):
+        return self.word.confidence
+
+    @property
+    def characters(self):
+        return self.word.characters[self.start : self.end]
+
+    @property
+    def x(self):
+        return min(c.x for c in self.characters)
+
+    @property
+    def y(self):
+        return min(c.y for c in self.characters)
+
+    @property
+    def w(self):
+        return max(c.x + c.w for c in self.characters) - self.x
+
+    @property
+    def h(self):
+        return max(c.y + c.h for c in self.characters) - self.y
+
+    @property
+    def left_limit(self):
+        if not self.start:
+            return 0.0
+        previous = self.word.characters[self.start - 1]
+        return min(self.x, (previous.x + previous.w + self.x) / 2)
+
+    @property
+    def right_limit(self):
+        if self.end == len(self.word.text):
+            return 1.0
+        following = self.word.characters[self.end]
+        return max(self.x + self.w, (self.x + self.w + following.x) / 2)
+
+
+def slice_word(word, start, end):
+    if start == 0 and end == len(word.text):
+        return word
+    if isinstance(word, WordSlice):
+        return WordSlice(word.word, word.start + start, word.start + end)
+    return WordSlice(word, start, end)
 
 
 @dataclass(frozen=True)
 class Line:
-    words: tuple[Word, ...]
+    words: tuple[Word | WordSlice, ...]
 
     @property
     def text(self) -> str:
@@ -36,17 +130,23 @@ class Line:
     def bottom(self) -> float:
         return max(word.y + word.h for word in self.words)
 
-    def words_for_span(self, start: int, end: int) -> tuple[Word, ...]:
-        return words_for_span(self.words, start, end)
+    def words_for_span(self, start: int, end: int, *, precise=False):
+        return words_for_span(self.words, start, end, precise=precise)
 
 
-def words_for_span(words, start, end):
+def words_for_span(words, start, end, *, precise=False):
     selected = []
     offset = 0
     for word in words:
         stop = offset + len(word.text)
         if start < stop and end > offset:
-            selected.append(word)
+            selected.append(
+                slice_word(
+                    word, max(0, start - offset), min(len(word.text), end - offset)
+                )
+                if precise
+                else word
+            )
         offset = stop + 1
     return tuple(selected)
 
@@ -97,6 +197,7 @@ class Document:
                     word["y"],
                     word["w"],
                     word["h"],
+                    tuple(Character(**char) for char in word.get("characters", [])),
                 )
                 for i, word in enumerate(raw)
             )
@@ -136,5 +237,5 @@ class Finding:
     """A semantic decision. Return original Word objects, not pixel rectangles."""
 
     field: str
-    words: tuple[Word, ...]
+    words: tuple[Word | WordSlice, ...]
     reason: str = ""

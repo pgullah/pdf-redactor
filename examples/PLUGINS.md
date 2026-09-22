@@ -13,7 +13,7 @@ A detector decides what a value means; the common engine maps the selected OCR w
 [general.yaml](general.yaml) is a ready-to-edit configuration for arbitrary document types:
 
 ```sh
-uv run python main.py plan document.pdf -o masks.yaml --plugin general --plugin-config examples/general.yaml
+uv run python main.py plan document.pdf -o masks.yaml --plugin-config examples/general.yaml
 ```
 
 The top-level key must be `general`. Supported sections:
@@ -41,6 +41,28 @@ patterns:
 Remove a rule to disable it. At least one rule is required; empty config, invalid expressions, and unrecognized rule options fail before export. Rules are additive and masks are deduplicated. Regex/literal rules mask whole words touched by a match; they do not cross page boundaries. Literal whitespace is normalized. Regexes use Python syntax and run without a separate timeout.
 
 The supplied phone rule is label-based to avoid confusing arbitrary digit sequences with phone numbers. Names and addresses also rely on configured labels; detecting unlabeled values requires known literals or a custom entity detector. Review each document's results, especially multiline address boundaries. The general detector has no purchase-order-specific assumptions.
+
+## Multiple fields on the same line
+
+Both general and purchase-order field detectors split known inline labels before selecting values. No layout flag is needed. For example:
+
+```text
+Name: Jane Smith Phone: 020 1234 Date: 2026-09-21
+```
+
+With `Name` and `Phone` in `fields`, and `Date` in `stop_labels`, only `Jane Smith` and `020 1234` are masked. A selected field can appear anywhere on the line, including after a public field. The same boundaries apply to black masks and replacement text.
+
+Use [inline-fields.yaml](inline-fields.yaml):
+
+```sh
+uv run python main.py plan input.pdf --config examples/inline-fields.yaml -o masks.yaml
+```
+
+The parser uses configured labels, preferring longer labels such as `Full Name` over `Name`. A label inside a line must have a colon, or follow an explicit `|` or `;` separator. This avoids treating a word such as `Date` inside `Mary Date Jones` as a new field. Ordinary labels at the start of a line or a separate visual column retain colon-optional behavior.
+
+Add neighboring fields you want to preserve to `stop_labels`. Unknown labels, or dense same-line layouts without colons/separators, are not reliably inferred; use a custom detector or reviewed regions for those layouts. If OCR merges a value and the next known label into one word, field detection uses measured character boxes to select only the value. A label attached directly to its value (such as `Name:Jane`) is handled the same way. Mask padding is limited at neighboring characters so labels stay visible. If the separate character-box pass cannot be aligned, the pipeline retries using hOCR, which groups character boxes under their recognized words. Recovery requires matching text and page coordinates. Character positions must align exactly with the recognized word; if they do not, the pipeline requests a clearer scan or an explicit reviewed region instead of guessing. No new YAML option is needed.
+
+Address continuation lines are restricted to the field's column, including when OCR combines adjacent columns into one line. Review the output because OCR can still miss or misread labels.
 
 ## Purchase orders
 
@@ -100,14 +122,15 @@ Both `path/to/file.py:function` and `importable.module:function` work. File plug
 
 - `Document`: immutable `name`, `sha256`, `pages`, and combined `text`.
 - `Page`: `index`, rendered pixel `width`/`height`, `words`, `lines`, and `text`.
-- `Word`: page/index reference, text, OCR confidence, and normalized `x`, `y`, `w`, `h`.
-- `Line`: words, joined text, geometry helpers, and `words_for_span(start, end)`.
+- `Word`: page/index reference, text, OCR confidence, normalized `x`, `y`, `w`, `h`, and optional measured `characters`.
+- `WordSlice`: a character range backed by an original word, with geometry calculated from its character boxes. Labeled-field detection uses these for joined tokens.
+- `Line`: words, joined text, geometry helpers, and `words_for_span(start, end, precise=False)`. Set `precise=True` for character-aware spans when measured boxes are available.
 - `Page.find(pattern, field="text", flags=re.IGNORECASE)`: yields findings from Python regex matches, mapped to whole OCR words.
 - `Finding(field, words, reason="")`: semantic field name and original OCR `Word` objects to redact. `reason` is available in memory but is not saved in plans.
 
 `Line.words_for_span` offsets refer to `line.text`, where words are separated by one space. `Page.find` uses `page.text` in OCR reading order. `page.lines` uses Tesseract line identities, separates large horizontal gaps, and sorts visually; complex reading order may still need detector-specific handling.
 
-The detector must return/yield an iterable of `Finding` objects. An empty iterable means no findings. Return original word objects; manufactured coordinates or references to another document are rejected. The engine applies `--padding`, deduplicates masks, validates them, and reuses the existing permanent image-only export. No confidence threshold silently discards words.
+The detector must return/yield an iterable of `Finding` objects. Findings may reference original words or validated `WordSlice` ranges backed by those words. An empty iterable means no findings. Return original word objects or slices of them; manufactured coordinates or references to another document are rejected. The engine applies `--padding`, deduplicates masks, validates them, and reuses the existing permanent image-only export. No confidence threshold silently discards words.
 
 For NER, run a model over `line.text` or `page.text`, map predicted character spans back to the corresponding words, and yield a `Finding` with a stable entity label. No NER model, LLM, or external service is included or invoked by default.
 
@@ -128,7 +151,7 @@ uv run python main.py plan order.pdf -o masks.yaml --plugin examples/vendor_po.p
 
 YAML supports comments and multiline configuration. Files are parsed with a safe loader; Python object tags and duplicate mapping keys are rejected. Quote values such as `"yes"`, `"no"`, or dates when you intend strings. Existing JSON config/plan files remain readable because their syntax is valid YAML; newly generated plans and OCR output use YAML.
 
-Repeat `--plugin` to combine detectors. `--text`, `--regex`, and `--terms-file` continue to work and use the same finding-to-mask engine. Detectors are additive: all findings are merged; one plugin cannot undo another plugin's selections. Each invocation chooses its detectors explicitly; automatic document-type routing belongs in your own plugin.
+Repeat `--plugin` to combine detectors. `--text`, `--regex`, and `--terms-file` continue to work and use the same finding-to-mask engine. Detectors are additive: all findings are merged; one plugin cannot undo another plugin's selections. When no plugin is specified, a general rules section selects the default general detector. Explicit --plugin selections replace the default; automatic document-type routing belongs in your own plugin.
 
 ### Review, errors, and trust
 

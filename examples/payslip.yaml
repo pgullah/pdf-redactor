@@ -4,12 +4,23 @@ masking:
   default:
     mode: black
   fields:
-    person_name:
+    ni_number:
+      mode: text
+      text: XXXXX
+      background: '#FFFFFF'
+      foreground: '#000000'
+    tax_code:
       mode: text
       text: XXXXX
       background: '#FFFFFF'
       foreground: '#000000'
     postal_address:
+      mode: text
+      text: XXXXX
+    tax_reference:
+      mode: text
+      text: XXXXX
+    tax_residence:
       mode: text
       text: XXXXX
     email_address:
@@ -21,21 +32,40 @@ masking:
     # general.phone_number:
     #   mode: fill
     #   background: '#DDDDDD'
-  regions: []
+  regions:
+    # Mask company name in the header of the payslip:
+    - page: 0
+      x: 0.70
+      y: 0.02
+      w: 0.28
+      h: 0.05
+    # Mask name & company name
+    - page: 0
+      x: 0.03
+      y: 0.12
+      w: 0.94
+      h: 0.02
+
 
 general:
   fields:
-    person_name:
-      labels: [Name, Full Name, Customer Name]
+    ni_number:
+      labels: [National Insurance Number, NI Number, NI Letter, National Insurance No, NI Letter & No]
+      max_lines: 1
+    tax_code:
+      labels: [Tax Code, Tax Code Reference]
       max_lines: 1
     postal_address:
       labels: [Address, Postal Address, Mailing Address]
       max_lines: 5
-    phone_number:
-      labels: [Phone, Telephone, Mobile]
-      max_lines: 1
     account_number:
       labels: [Account Number, Account No]
+      max_lines: 1
+    tax_reference:
+      labels: [Tax Reference, Tax Reference Number]
+      max_lines: 1
+    tax_residence:
+      labels: [Tax Residence, Tax Residence Country, Tax District]
       max_lines: 1
   stop_labels: [Date, Email, Phone, Total, Notes, Signature]
   patterns:

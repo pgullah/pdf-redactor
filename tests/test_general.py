@@ -79,8 +79,6 @@ def test_general_cli_plan_apply(tmp_path, monkeypatch):
                 str(source),
                 "-o",
                 str(plan),
-                "--plugin",
-                "general",
                 "--plugin-config",
                 str(CONFIG),
             ]
@@ -101,3 +99,11 @@ def test_general_cli_plan_apply(tmp_path, monkeypatch):
         )
         == 0
     )
+
+
+def test_default_general_needs_rules_before_opening_pdf(tmp_path, capsys):
+    assert (
+        main(["plan", str(tmp_path / "missing.pdf"), "-o", str(tmp_path / "out.yaml")])
+        == 1
+    )
+    assert "general rules section" in capsys.readouterr().err

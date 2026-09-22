@@ -48,14 +48,19 @@ Matching is case-insensitive by default. Use `--case-sensitive` to change this. 
 
 ### General masking configuration
 
+`general` is the default plugin for `plan` and `redact`. Supply your YAML rules with `--config PATH`; `--plugin general` is optional. An explicit `--plugin` replaces the default (repeat it to combine detectors). Text/regex-only and region-only commands still work without a general rules section.
+
+
 Use [examples/general.yaml](examples/general.yaml) for common document fields and patterns:
 
 ```sh
-uv run python main.py plan input.pdf -o masks.yaml --plugin general --plugin-config examples/general.yaml
+uv run python main.py plan input.pdf -o masks.yaml --plugin-config examples/general.yaml
 uv run python main.py apply input.pdf --masks masks.yaml -o redacted.pdf
 ```
 
 The example masks labeled names, postal/shipping/billing addresses, phone numbers, and account numbers, plus email patterns anywhere on a page. Edit the labels for your documents, add exact values under `literals`, or remove unwanted rules. Unlabeled names and addresses require known literal values or a custom detector; this is not universal entity recognition.
+
+Known fields on the same line are handled automatically: values stop at the next configured label. Joined OCR tokens use measured character boxes to separate labels and values. Put sensitive labels in `fields` and neighboring public labels in `stop_labels`. See [inline-fields.yaml](examples/inline-fields.yaml) and [same-line detection details](examples/PLUGINS.md#multiple-fields-on-the-same-line).
 
 ### Document-specific fields and custom plugins
 
@@ -81,7 +86,7 @@ See **[the plugin guide](examples/PLUGINS.md)** for the API, configuration, enti
 Black remains the default. Set `masking.default`, `masking.fields`, or `masking.regions` in YAML to use an opaque fill or replacement text such as `XXXXX`:
 
 ```sh
-uv run python main.py plan input.pdf -o masks.yaml --plugin general --config examples/masking.yaml
+uv run python main.py plan input.pdf -o masks.yaml --config examples/masking.yaml
 uv run python main.py apply input.pdf --masks masks.yaml -o redacted.pdf
 ```
 

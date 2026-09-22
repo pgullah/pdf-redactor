@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from uuid import uuid4
 
-from .model import Finding
+from .model import Finding, WordSlice
 from .rendering import BLACK
 
 
@@ -76,23 +76,29 @@ def run_detector(name, detector, document, config, padding, masking=None):
             refs, selected = [], []
             for word in finding.words:
                 key = (word.page, word.index)
-                if known.get(key) != word:
+                source_word = word.word if isinstance(word, WordSlice) else word
+                if known.get(key) != source_word:
                     raise ValueError(
                         "Finding references a word outside the OCR document."
                     )
-                refs.append({"page": word.page, "word": word.index})
+                ref = {"page": word.page, "word": word.index}
+                if isinstance(word, WordSlice):
+                    ref.update(start=word.start, end=word.end)
+                refs.append(ref)
                 selected.append(word)
             if style["mode"] == "text":
                 # One replacement per contiguous selected line span. Do not bridge
                 # unselected words, page boundaries, or separate visual columns.
                 groups = []
-                selected_keys = {(word.page, word.index) for word in selected}
+                selected_parts = {}
+                for word in selected:
+                    selected_parts.setdefault((word.page, word.index), []).append(word)
                 for page in document.pages:
                     for line in page.lines:
                         group = []
                         for word in line.words:
-                            if (word.page, word.index) in selected_keys:
-                                group.append(word)
+                            if (word.page, word.index) in selected_parts:
+                                group.extend(selected_parts[(word.page, word.index)])
                             elif group:
                                 groups.append(group)
                                 group = []
@@ -103,13 +109,22 @@ def run_detector(name, detector, document, config, padding, masking=None):
             for group in groups:
                 page = pages[group[0].page]
                 px, py = padding / page.width, padding / page.height
-                x = max(0, min(word.x for word in group) - px)
+                left_limit = max(
+                    (word.left_limit for word in group if isinstance(word, WordSlice)),
+                    default=0,
+                )
+                right_limit = min(
+                    (word.right_limit for word in group if isinstance(word, WordSlice)),
+                    default=1,
+                )
+                x = max(left_limit, min(word.x for word in group) - px)
                 y = max(0, min(word.y for word in group) - py)
                 mask = {
                     "page": page.index,
                     "x": x,
                     "y": y,
-                    "w": min(1, max(word.x + word.w for word in group) + px) - x,
+                    "w": min(right_limit, max(word.x + word.w for word in group) + px)
+                    - x,
                     "h": min(1, max(word.y + word.h for word in group) + py) - y,
                 }
                 if style != BLACK:

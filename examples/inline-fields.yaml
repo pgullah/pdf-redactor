@@ -1,0 +1,16 @@
+# No special layout setting: known labels bound values on the same OCR line.
+# Example: Name: Jane Smith Phone: 020 1234 Date: 2026-09-21
+# Masks Jane Smith and 020 1234; keeps Name, Phone, Date and its value visible.
+general:
+  fields:
+    person_name:
+      labels: [Name, Full Name]
+      max_lines: 1
+    phone_number:
+      labels: [Phone, Telephone]
+      max_lines: 1
+    postal_address:
+      labels: [Address, Postal Address]
+      max_lines: 5
+  # Labels to preserve, but which stop the preceding sensitive field's value.
+  stop_labels: [Date, Reference, Order Number, Total, Notes]

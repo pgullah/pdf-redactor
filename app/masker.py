@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import math
 import os
+import re
 import shutil
 import tempfile
 import threading
 import uuid
+import xml.etree.ElementTree as ET
 from contextlib import closing
 from dataclasses import dataclass, field
 from io import BytesIO
@@ -154,6 +156,56 @@ class Store:
                             "h": data["height"][i] / image.height,
                         }
                     )
+                # Word-level TSV may merge values with labels, e.g. Jane|Phone:.
+                # Only request glyph boxes on pages with potentially joined tokens.
+                candidates = [
+                    word
+                    for word in words
+                    if any(c in word["text"][1:-1] for c in ":|;,/()-")
+                    or word["text"].endswith(("|", ";"))
+                ]
+                if candidates:
+                    boxes = pytesseract.image_to_boxes(
+                        image,
+                        lang=language,
+                        output_type=pytesseract.Output.DICT,
+                        timeout=120,
+                    )
+                    glyphs = []
+                    for i, char in enumerate(boxes.get("char", [])):
+                        left, right = int(boxes["left"][i]), int(boxes["right"][i])
+                        top, bottom = (
+                            image.height - int(boxes["top"][i]),
+                            image.height - int(boxes["bottom"][i]),
+                        )
+                        glyphs.append(
+                            {
+                                "text": char,
+                                "x": left / image.width,
+                                "y": top / image.height,
+                                "w": (right - left) / image.width,
+                                "h": (bottom - top) / image.height,
+                            }
+                        )
+                    for word in candidates:
+                        chars = [
+                            char
+                            for char in glyphs
+                            if word["x"] - 1 / image.width
+                            <= char["x"] + char["w"] / 2
+                            <= word["x"] + word["w"] + 1 / image.width
+                            and word["y"] - 1 / image.height
+                            <= char["y"] + char["h"] / 2
+                            <= word["y"] + word["h"] + 1 / image.height
+                        ]
+                        if (
+                            len(chars) == len(word["text"])
+                            and "".join(c["text"] for c in chars) == word["text"]
+                        ):
+                            word["characters"] = chars
+                    missing = [word for word in candidates if "characters" not in word]
+                    if missing:
+                        attach_hocr_characters(image, language, missing)
             doc.words[cache_key] = words
             return words
 
@@ -194,3 +246,70 @@ class Store:
                     image.close()
             pdf.save()
             return output.getvalue()
+
+
+def attach_hocr_characters(image, language, words):
+    """Recover aligned glyphs from one recognition result, without guessing widths.
+
+    Unlike makebox output, hOCR nests character boxes inside their owning words.
+    Match both text and location before accepting a recovery for a TSV word.
+    """
+    payload = pytesseract.image_to_pdf_or_hocr(
+        image,
+        lang=language,
+        extension="hocr",
+        config="-c hocr_char_boxes=1",
+        timeout=120,
+    )
+    root = ET.fromstring(payload)
+    for node in root.iter():
+        if "ocrx_word" not in node.get("class", "").split():
+            continue
+        chars = []
+        for glyph in node.iter():
+            if "ocrx_cinfo" not in glyph.get("class", "").split():
+                continue
+            match = re.search(
+                r"\bx_bboxes (\d+) (\d+) (\d+) (\d+)", glyph.get("title", "")
+            )
+            text = "".join(glyph.itertext())
+            if not match or len(text) != 1:
+                chars = []
+                break
+            left, top, right, bottom = map(int, match.groups())
+            chars.append(
+                {
+                    "text": text,
+                    "x": left / image.width,
+                    "y": top / image.height,
+                    "w": (right - left) / image.width,
+                    "h": (bottom - top) / image.height,
+                }
+            )
+        if not chars:
+            continue
+        text = "".join(c["text"] for c in chars)
+        for word in words:
+            if word["text"] != text:
+                continue
+            # Compare all four edges, not just centers: duplicate values can
+            # occur elsewhere on the page, and partial matches are unsafe.
+            bounds = (
+                min(c["x"] for c in chars),
+                min(c["y"] for c in chars),
+                max(c["x"] + c["w"] for c in chars),
+                max(c["y"] + c["h"] for c in chars),
+            )
+            expected = (
+                word["x"],
+                word["y"],
+                word["x"] + word["w"],
+                word["y"] + word["h"],
+            )
+            if all(
+                abs(a - b) <= tolerance
+                for a, b, tolerance in zip(
+                    bounds, expected, (2 / image.width, 2 / image.height) * 2
+                )
+            ):
+                word["characters"] = chars

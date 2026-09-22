@@ -1,5 +1,5 @@
 """Public API for document-specific redaction detectors."""
 
-from .model import Document, Finding, Line, Page, Word
+from .model import Character, Document, Finding, Line, Page, Word, WordSlice
 
-__all__ = ["Document", "Finding", "Line", "Page", "Word"]
+__all__ = ["Character", "Document", "Finding", "Line", "Page", "Word", "WordSlice"]
